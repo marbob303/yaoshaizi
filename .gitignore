@@ -1,0 +1,7 @@
+# 已构建产物
+build/
+.gradle/
+# 本机 SDK 位置（不要提交，各自机器自行配置环境变量）
+local.properties
+# 系统文件
+.DS_Store
