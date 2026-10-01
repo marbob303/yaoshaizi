@@ -2,9 +2,14 @@ name: Android Build
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -24,6 +29,9 @@ jobs:
         with:
           gradle-version: 8.7
 
+      - name: Run unit tests
+        run: gradle :app:testDebugUnitTest --no-daemon
+
       - name: Build debug APK
         run: gradle :app:assembleDebug --no-daemon
 
@@ -32,3 +40,23 @@ jobs:
         with:
           name: Yaoshaizi-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Yaoshaizi-debug-apk
+          path: apk
+
+      - name: Rename APK with version
+        run: mv apk/app-debug.apk "apk/Yaoshaizi-${{ github.ref_name }}.apk"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: apk/Yaoshaizi-*.apk
+          generate_release_notes: true
