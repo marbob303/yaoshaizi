@@ -21,47 +21,54 @@ class SoundEngine {
     var muted by mutableStateOf(false)
 
     private val sampleRate = 22050
-    private val track: AudioTrack
+    // AudioTrack 可能初始化失败（如音频服务暂不可用）；为 null 时整机静默，
+    // 绝不能因为音频问题导致启动闪退——这是 0.10 闪退的首要嫌疑点。
+    private val track: AudioTrack?
     private val executor = Executors.newSingleThreadExecutor()
     private var lastPlayAt = 0L
 
     init {
-        val minBuf = AudioTrack.getMinBufferSize(
-            sampleRate,
-            AudioFormat.CHANNEL_OUT_MONO,
-            AudioFormat.ENCODING_PCM_16BIT
-        )
-        track = AudioTrack.Builder()
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_GAME)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                    .build()
+        track = try {
+            val minBuf = AudioTrack.getMinBufferSize(
+                sampleRate,
+                AudioFormat.CHANNEL_OUT_MONO,
+                AudioFormat.ENCODING_PCM_16BIT
             )
-            .setAudioFormat(
-                AudioFormat.Builder()
-                    .setSampleRate(sampleRate)
-                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                    .build()
-            )
-            .setBufferSizeInBytes(max(minBuf, sampleRate / 4))
-            .setTransferMode(AudioTrack.MODE_STREAM)
-            .build()
-        track.play()
+            AudioTrack.Builder()
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_GAME)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+                .setAudioFormat(
+                    AudioFormat.Builder()
+                        .setSampleRate(sampleRate)
+                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                        .build()
+                )
+                .setBufferSizeInBytes(max(minBuf, sampleRate / 4))
+                .setTransferMode(AudioTrack.MODE_STREAM)
+                .build()
+                .also { it.play() }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     /** 播放一次碰撞声，intensity 0..1；内部节流避免过密 */
     fun clack(intensity: Float) {
+        val t = track ?: return // 音频不可用：静默跳过
         if (muted) return
         val now = SystemClock.uptimeMillis()
         if (now - lastPlayAt < 40) return
         lastPlayAt = now
         val k = intensity.coerceIn(0.15f, 1f)
-        executor.execute { writeBurst(k) }
+        executor.execute { writeBurst(t, k) }
     }
 
-    private fun writeBurst(intensity: Float) {
+    private fun writeBurst(t: AudioTrack, intensity: Float) {
         try {
             val n = (sampleRate * 0.07).toInt() // 70ms
             val buf = ShortArray(n)
@@ -77,7 +84,7 @@ class SoundEngine {
                 val s = (lp * env + transient * env * 0.5f) * intensity
                 buf[i] = (s * 26000).toInt().toShort()
             }
-            track.write(buf, 0, n, AudioTrack.WRITE_BLOCKING)
+            t.write(buf, 0, n, AudioTrack.WRITE_BLOCKING)
         } catch (_: Exception) {
             // 音频不可用时静默忽略，不影响游戏
         }
@@ -86,8 +93,8 @@ class SoundEngine {
     fun release() {
         executor.shutdown()
         try {
-            track.stop()
-            track.release()
+            track?.stop()
+            track?.release()
         } catch (_: Exception) {
         }
     }

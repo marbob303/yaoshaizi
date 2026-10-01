@@ -117,7 +117,7 @@ private fun DrawScope.drawTitle(measurer: TextMeasurer, w: Float, h: Float) {
     )
     drawText(title, topLeft = Offset((w - title.size.width) / 2f, h * 0.055f))
     val sub = measurer.measure(
-        "Yaoshaizi v0.10",
+        "Yaoshaizi v0.11",
         style = TextStyle(fontSize = 15.sp, color = Color(0xFF9C8B66), textAlign = TextAlign.Center)
     )
     drawText(
